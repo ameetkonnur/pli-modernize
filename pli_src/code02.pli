@@ -1,0 +1,276 @@
+***********************************************************************
+*                                                                     *
+*      PL/I EXAMPLE                                                   *
+*      OBJECT IS TEMPORARY                                            *
+*                                                                     *
+*                                                                     *
+*                                                                     *
+***********************************************************************
+ CRTPLN3: PROCEDURE OPTIONS (MAIN);                                     CSR00010
+                                                                        CSR00020
+ DCL                                                                    CSR00030
+  (                                                                     CSR00040
+  K INIT(1024),                        /* ONE KILO-BYTE              */ CSR00050
+  PAGESIZE INIT(4096),                 /* 4K PAGE BOUNDARY           */ CSR00060
+  OFFSET INIT(0),                      /* WINDOWS STARTS             */ CSR00070
+  WINDOW_SIZE INIT(20),                /* WINDOW SIZE IN PAGES       */ CSR00080
+  NUM_WIN_ELEM INIT (20480),           /* NUM OF 4-BYTE ELEMENTS     */ CSR00090
+  OBJECT_SIZE INIT (60))               /* CHOSEN OBJECT SIZE IN PGS  */ CSR00100
+  FIXED BIN(31);                                                        CSR00110
+                                                                        CSR00120
+ DCL                                                                    CSR00130
+ /* 32767 IS UPPER LIMIT FOR ARRAY BOUND.                            */ CSR00140
+  S(32767) BIN(31) FIXED BASED(SP);     /* DEFINE WORD ALIGNED SPACE */ CSR00150
+                                                                        CSR00160
+ DCL SP PTR;                                                            CSR00170
+                                                                        CSR00180
+ DCL                                                                    CSR00190
+  (                                                                     CSR00200
+  ORIG,                                /* START ADDRESS OF WINDOW    */ CSR00210
+  AD, I,                               /* TEMPORARY VARIABLES        */ CSR00220
+  HIGH_OFFSET,                         /* SIZE OF OBJECT IN PAGES    */ CSR00230
+  NEW_HI_OFFSET,                       /* NEW MAX SIZE OF THE OBJECT */ CSR00240
+  RETURN_CODE,                         /* RETURN CODE                */ CSR00250
+  REASON_CODE) FIXED BIN(31);          /* REASON CODE                */ CSR00260
+                                                                        CSR00270
+ DCL                                                                    CSR00280
+  OBJECT_ID CHAR(8);                   /* IDENTIFYING TOKEN          */ CSR00290
+                                                                        CSR00300
+ /********************************************************************/ CSR00310
+                                                                        CSR00320
+ DCL CSRIDAC ENTRY(CHAR(5),            /* OP_TYPE                    */ CSR00330
+                   CHAR(9),            /* OBJECT_TYPE                */ CSR00340
+                   CHAR(44),           /* OBJECT_NAME                */ CSR00350
+                   CHAR(3),            /* SCROLL_AREA                */ CSR00360
+                   CHAR(3),            /* OBJECT_STATE               */ CSR00370
+                   CHAR(6),            /* ACCESS_MODE                */ CSR00380
+                   FIXED BIN(31),      /* OBJECT_SIZE                */ CSR00390
+                   CHAR(8),            /* OBJECT_ID                  */ CSR00400
+                   FIXED BIN(31),      /* HIGH_OFFSET                */ CSR00410
+                   FIXED BIN(31),      /* RETURN_CODE                */ CSR00420
+                   FIXED BIN(31) )     /* REASON_CODE                */ CSR00430
+                   OPTIONS(ASSEMBLER);                                  CSR00440
+                                                                        CSR00450
+                                                                        CSR00460
+ DCL CSRVIEW ENTRY(CHAR(5),            /* OP_TYPE                    */ CSR00470
+                   CHAR(8),            /* OBJECT_ID                  */ CSR00480
+                   FIXED BIN(31),      /* OFFSET                     */ CSR00490
+                   FIXED BIN(31),      /* WINDOW_SIZE                */ CSR00500
+                   FIXED BIN(31),      /* WINDOW_NAME                */ CSR00510
+                   CHAR(6),            /* USAGE                      */ CSR00520
+                   CHAR(7),            /* DISPOSITION                */ CSR00530
+                   FIXED BIN(31),      /* RETURN_CODE                */ CSR00540
+                   FIXED BIN(31) )     /* REASON_CODE                */ CSR00550
+                   OPTIONS(ASSEMBLER);                                  CSR00560
+                                                                        CSR00570
+                                                                        CSR00580
+ DCL CSRSCOT ENTRY(CHAR(8),            /* OBJECT_ID                  */ CSR00590
+                   FIXED BIN(31),      /* OFFSET                     */ CSR00600
+                   FIXED BIN(31),      /* SPAN                       */ CSR00610
+                   FIXED BIN(31),      /* RETURN_CODE                */ CSR00620
+                   FIXED BIN(31) )     /* REASON_CODE                */ CSR00630
+                   OPTIONS(ASSEMBLER);                                  CSR00640
+                                                                        CSR00650
+                                                                        CSR00660
+ DCL CSRSAVE ENTRY(CHAR(8),            /* OBJECT_ID                  */ CSR00670
+                   FIXED BIN(31),      /* OFFSET                     */ CSR00680
+                   FIXED BIN(31),      /* SPAN                       */ CSR00690
+                   FIXED BIN(31),      /* NEW_HI_OFFSET              */ CSR00700
+                   FIXED BIN(31),      /* RETURN_CODE                */ CSR00710
+                   FIXED BIN(31) )     /* REASON_CODE                */ CSR00720
+                   OPTIONS(ASSEMBLER);                                  CSR00730
+                                                                        CSR00740
+                                                                        CSR00750
+ DCL CSRREFR ENTRY(CHAR(8),            /* OBJECT_ID                  */ CSR00760
+                   FIXED BIN(31),      /* OFFSET                     */ CSR00770
+                   FIXED BIN(31),      /* SPAN                       */ CSR00780
+                   FIXED BIN(31),      /* RETURN_CODE                */ CSR00790
+                   FIXED BIN(31) )     /* REASON_CODE                */ CSR00800
+                   OPTIONS(ASSEMBLER);                                  CSR00810
+                                                                        CSR00820
+ /********************************************************************/ CSR00830
+                                                                        CSR00840
+                                                                        CSR00850
+  PUT SKIP LIST                                                         CSR00860
+          ('<< BEGIN DATA WINDOWING SERVICES INTERFACE VALIDATION >>'); CSR00870
+  PUT SKIP LIST (' ');                                                  CSR00880
+                                                                        CSR00890
+  CALL                                                                  CSR00900
+  CSRIDAC ('BEGIN',                    /* SET UP ACCESS TO A HIPER-  */ CSR00910
+           'TEMPSPACE',                /* SPACE OBJECT               */ CSR00920
+           'MY FIRST HIPERSPACE',                                       CSR00930
+           'YES',                                                       CSR00940
+           'NEW',                                                       CSR00950
+           'UPDATE',                                                    CSR00960
+           OBJECT_SIZE,                                                 CSR00970
+           OBJECT_ID,                                                   CSR00980
+           HIGH_OFFSET,                                                 CSR00990
+           RETURN_CODE,                                                 CSR01000
+           REASON_CODE);                                                CSR01010
+                                                                        CSR01020
+  ALLOC S;                             /* ALLOCATE SPACE             */ CSR01030
+  AD = UNSPEC(SP);                     /* GET ADDRESS OF SPACE       */ CSR01040
+  ORIG = MOD(AD,PAGESIZE);             /* SEE WHERE SPACE IS IN PAGE */ CSR01050
+  IF ORIG ¬= 0 THEN                    /* IF NOT ON PAGE BOUNDARY    */ CSR01060
+    ORIG = (PAGESIZE-ORIG) / 4;        /* THEN LOCATE PAGE BOUNDARY  */ CSR01070
+  ORIG = ORIG + 1;                                                      CSR01080
+                                                                        CSR01090
+  DO  I = 1 TO NUM_WIN_ELEM;           /* PUT SOME DATA INTO WINDOW  */ CSR01100
+    S(I+ORIG-1) = 99;                  /* AREA                       */ CSR01110
+  END;                                                                  CSR01120
+                                                                        CSR01130
+  CALL                                                                  CSR01140
+  CSRVIEW ('BEGIN',                    /* NOW VIEW DATA IN FIRST     */ CSR01150
+           OBJECT_ID,                  /* WINDOW                     */ CSR01160
+           OFFSET,                                                      CSR01170
+           WINDOW_SIZE,                                                 CSR01180
+           S(ORIG),                                                     CSR01190
+           'RANDOM',                                                    CSR01200
+           'REPLACE',                                                   CSR01210
+           RETURN_CODE,                                                 CSR01220
+           REASON_CODE);                                                CSR01230
+                                                                        CSR01240
+  DO  I = 1 TO NUM_WIN_ELEM;           /* CALCULATE VALUE IN 1ST     */ CSR01250
+    S(I+ORIG-1) = I+1;                 /* WINDOW                     */ CSR01260
+  END;                                                                  CSR01270
+                                                                        CSR01280
+  CALL                                                                  CSR01290
+  CSRSCOT( OBJECT_ID,                  /* CAPTURE THE VIEW IN 1ST   */  CSR01300
+           OFFSET,                     /* WINDOW                    */  CSR01310
+           WINDOW_SIZE,                                                 CSR01320
+           RETURN_CODE,                                                 CSR01330
+           REASON_CODE);                                                CSR01340
+                                                                        CSR01350
+  CALL                                                                  CSR01360
+  CSRVIEW ('END ',                     /* END THE VIEW IN 1ST WINDOW */ CSR01370
+           OBJECT_ID,                                                   CSR01380
+           OFFSET,                                                      CSR01390
+           WINDOW_SIZE,                                                 CSR01400
+           S(ORIG),                                                     CSR01410
+           'RANDOM',                                                    CSR01420
+           'RETAIN ',                                                   CSR01430
+           RETURN_CODE,                                                 CSR01440
+           REASON_CODE);                                                CSR01450
+                                                                        CSR01460
+  CALL                                                                  CSR01470
+  CSRVIEW ('BEGIN',                    /* NOW VIEW OTHER DATA IN     */ CSR01480
+           OBJECT_ID,                  /* 2ND WINDOW                 */ CSR01490
+           OFFSET+WINDOW_SIZE,                                          CSR01500
+           WINDOW_SIZE,                                                 CSR01510
+           S(ORIG),                                                     CSR01520
+           'RANDOM',                                                    CSR01530
+           'REPLACE',                                                   CSR01540
+           RETURN_CODE,                                                 CSR01550
+           REASON_CODE);                                                CSR01560
+                                                                        CSR01570
+  DO  I = 1 TO NUM_WIN_ELEM;           /* CALCULATE NEW VALUE IN     */ CSR01580
+    S(I+ORIG-1) = I-101;               /* WINDOW                     */ CSR01590
+  END;                                                                  CSR01600
+                                                                        CSR01610
+  CALL                                                                  CSR01620
+  CSRSCOT (OBJECT_ID,                                                   CSR01630
+           OFFSET+WINDOW_SIZE,                                          CSR01640
+           WINDOW_SIZE,                                                 CSR01650
+           RETURN_CODE,                                                 CSR01670
+           REASON_CODE);                                                CSR01680
+                                                                        CSR01690
+  CALL                                                                  CSR01700
+  CSRVIEW ('END ',                     /* END THE CURRENT VIEW IN    */ CSR01710
+           OBJECT_ID,                  /* WINDOW                     */ CSR01720
+           OFFSET+WINDOW_SIZE,                                          CSR01730
+           WINDOW_SIZE,                                                 CSR01740
+           S(ORIG),                                                     CSR01750
+           'RANDOM',                                                    CSR01760
+           'RETAIN ',                                                   CSR01770
+           RETURN_CODE,                                                 CSR01780
+           REASON_CODE);                                                CSR01790
+                                                                        CSR01800
+  CALL                                                                  CSR01810
+  CSRVIEW ('BEGIN',                    /* NOW GO BACK TO THE VIEW IN */ CSR01820
+           OBJECT_ID,                  /* THE 1ST WINDOW             */ CSR01830
+           OFFSET,                                                      CSR01840
+           WINDOW_SIZE,                                                 CSR01850
+           S(ORIG),                                                     CSR01860
+           'RANDOM',                                                    CSR01870
+           'REPLACE',                                                   CSR01880
+           RETURN_CODE,                                                 CSR01890
+           REASON_CODE);                                                CSR01900
+                                                                        CSR01910
+  CALL                                                                  CSR01920
+  CSRREFR (OBJECT_ID,                  /* REFRESH THE DATA IN 1ST   */  CSR01930
+           OFFSET,                     /* WINDOW                    */  CSR01940
+           WINDOW_SIZE,                                                 CSR01950
+           RETURN_CODE,                                                 CSR01960
+           REASON_CODE);                                                CSR01970
+                                                                        CSR01980
+  CALL                                                                  CSR01990
+  CSRVIEW ('END ',                     /* END THE VIEW IN 1ST WINDOW */ CSR02000
+           OBJECT_ID,                                                   CSR02010
+           OFFSET,                                                      CSR02020
+           WINDOW_SIZE,                                                 CSR02030
+           S(ORIG),                                                     CSR02040
+           'RANDOM',                                                    CSR02050
+           'RETAIN ',                                                   CSR02060
+           RETURN_CODE,                                                 CSR02070
+           REASON_CODE);                                                CSR02080
+                                                                        CSR02090
+  CALL                                                                  CSR02100
+  CSRIDAC ('END  ',                    /* TERMINATE ACCESS TO THE    */ CSR02110
+           'TEMPSPACE',                /* HIPERSPACE OBJECT          */ CSR02120
+           'MY FIRST HIPERSPACE ENDS HERE ',                            CSR02130
+           'YES',                                                       CSR02140
+           'NEW',                                                       CSR02150
+           'UPDATE',                                                    CSR02160
+           WINDOW_SIZE,                                                 CSR02170
+           OBJECT_ID,                                                   CSR02180
+           HIGH_OFFSET,                                                 CSR02190
+           RETURN_CODE,                                                 CSR02200
+           REASON_CODE);                                                CSR02210
+                                                                        CSR02220
+  FREE S;                                                               CSR02230
+ END CRTPLN3;                                                           CSR02260
+***********************************************************************
+*                                                                     *
+*                                                                     *
+*      JCL TO COMPILE AND LINKEDIT PL/I PROGRAM.                      *
+*                                                                     *
+*                                                                     *
+*                                                                     *
+***********************************************************************
+//PLIJOB   JOB                                                          00010007
+//*                                                                     00041001
+//*  PL/I Compile and Linkedit                                          00042001
+//*                                                                     00043001
+//*  Change all CRTPLNx to CRTPLNy                                      00044001
+//*                                                                     00045001
+//GO       EXEC PLIXCL                                                  00050000
+//PLI.SYSIN DD DSN=WINDOW.XAMPLE.LIB(CRTPLN3),DISP=SHR                  00060008
+//LKED.SYSLMOD DD DSN=WINDOW.USER.LOAD,UNIT=3380,VOL=SER=VM2TSO,        00070000
+// DISP=SHR                                                             00080000
+//LKED.SYSIN DD *                                                       00090000
+  LIBRARY  IN(CSRSCOT,CSRSAVE,CSRREFR,CSRSAVE,CSRVIEW,CSRIDAC)          00100001
+  NAME CRTPLN3(R)                                                       00110008
+/*                                                                      00120000
+//*                                                                     00121001
+//*     SYS1.CSSLIB is source of CSR stubs                              00130001
+//*                                                                     00190000
+//LKED.IN     DD DSN=SYS1.CSSLIB,DISP=SHR                               00200000
+***********************************************************************
+*                                                                     *
+*                                                                     *
+*      JCL TO EXECUTE.                                                *
+*                                                                     *
+*                                                                     *
+*                                                                     *
+***********************************************************************
+//PLIRUN   JOB MSGLEVEL=(1,1)                                           00010000
+//*                                                                     00011001
+//*   EXECUTE A PL/I TESTCASE                                           00012001
+//*                                                                     00013001
+//GO       EXEC PGM=CRTPLN3                                             00020000
+//STEPLIB  DD  DSN=WINDOW.USER.LOAD,DISP=SHR,                           00030000
+// UNIT=3380,VOL=SER=VM2TSO                                             00040000
+//SYSLIB   DD  DSN=CEE.SCEERUN,DISP=SHR                                 00050000
+//SYSABEND DD SYSOUT=*                                                  00070000
+//SYSLOUT  DD  SYSOUT=*                                                 00080000
+//SYSPRINT DD  SYSOUT=*                                                 00090000

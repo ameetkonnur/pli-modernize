@@ -1,0 +1,12 @@
+{
+	"servers": {
+		"custom-pli-mcp": {
+			"url": "https://apim-eyyivnlfksllu.azure-api.net/mcp/api/tools",
+			"type": "http",
+			"headers": {
+				"Ocp-Apim-Subscription-Key": "YOUR_SUBSCRIPTION_KEY_HERE"
+			}
+		}
+	},
+	"inputs": []
+}

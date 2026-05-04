@@ -1,0 +1,510 @@
+        UM_PP2: PROC(COMPOINT)  OPTIONS(MAIN);
+        /*******************************************************************
+           F.2
+           
+           Title:        UM_PP2  -  PL/I PP2 Host umbrella program
+           Copyright:    (C) 1988 by Teradata Corporation, Los Angeles, CA 90066
+           DataBase:     [any database in which the following table exists]
+           Table:        HUTestResults
+           Input Parms:  None
+           Description:  This program will:
+                            - LOGON to a Teradata DBS using the logon string
+                              stored in the variable ’LOGON_STR’.
+                            - INSERT five rows into HUTestResults.
+                            - UPDATE row number 4.
+                            - DELETE row number 2.
+                            - SELECT all the rows from HUTestResults.
+                            - LOGOFF.
+           Comments:     - The Logon String is set to LOGON_STR via PL/I’s
+                           ’init’ in the declare statement for LOGON_STR.
+                         - Execute the following BTEQ script to create the
+                           HUTestResults table:
+                           CREATE TABLE HUTestResults, FALLBACK
+                                        (
+                                        SourceOfRow         VARCHAR(30)  ,
+                                        ROWNUMBER           INTEGER      ,
+                                        col001              BYTE(4)      ,
+                                        col002              BYTEINT      ,
+                                        col003              CHAR(8)      ,
+                                        col004              DATE         ,
+                                        col005              DECIMAL(8,3) ,
+                                        col006              FLOAT        ,
+                                        col007              INTEGER      ,
+                                        col008              SMALLINT     ,
+                                        col009              VARBYTE(8)   ,
+                                        col010              VARCHAR(15)
+                                        )
+                                  PRIMARY INDEX (SourceOfRow, ROWNUMBER) ;
+                         - COL001 and COL009 are NOT fetched during the select
+                           because their data types are BYTE and VARBYTE,
+                           respectively, and these data types are not
+                           supported by the PL/I PP2.
+           History   F.1 88SEP12   BUGS  Coded new UM_PP2 application
+                     F.2 88SEP14   OMH   CICS version of application
+         ******************************************************************/
+              /************************************************************/
+              /*                     %include’s                           */
+              /************************************************************/
+              /************************************************************/
+              /*                     constants                            */
+              /************************************************************/
+            dcl OK        fixed bin(15) init(0);
+            dcl DONE      fixed bin(15) init(-1);
+            dcl TRY_AGAIN fixed bin(15) init(-2);
+            dcl FATAL_ERR fixed bin(15) init(-9);
+              /************************************************************/
+              /*                     Variables                            */
+              /************************************************************/
+         dcl  code     fixed bin(15);
+         dcl  req_code  char(32) var;
+        
+         dcl  SCREEN_MESSAGE  char(60);
+         dcl  COMPOINT PTR;
+        
+         EXEC SQL BEGIN DECLARE SECTION;
+           dcl (I1, I2, I3, I4, I5, I6, I7, I8, I9, I10) fixed bin(15);
+           dcl (I11, I12, I13, I14, I15, I16, I17, I18, I19, I20) fixed bin(15);
+           dcl (I21, I22, I23, I24, I25, I26, I27, I28, I29, I30) fixed bin(15);
+         EXEC SQL END DECLARE SECTION;
+        
+         EXEC SQL INCLUDE SqlCA;
+        
+         EXEC SQL BEGIN DECLARE SECTION;
+           dcl   LOGON_STR char(30) var init (’e/omh,omh’);
+           dcl   USERNAME  char(32) var;
+           dcl   H_DATE    fixed bin(31);
+           dcl   H_TIME    fixed bin(31);
+           dcl   H_COL002  fixed bin(15);
+           dcl   H_COL003  char(8);
+           dcl   H_COL004  fixed bin(31);
+           dcl   H_COL005  fixed dec(8,3);
+           dcl   H_COL006  bin float(53);
+           dcl   H_COL007  fixed bin(31);
+           dcl   H_COL008  fixed bin(15);
+           dcl   H_COL010  char(15) var;
+           dcl   H_ROWNUMBER fixed bin(15);
+         EXEC SQL END DECLARE SECTION;
+        
+         dcl  addr   builtin;
+        
+         dclerr_msg        char(100) var;
+         dclerr_code       fixed bin(31);
+         dclmax_len        fixed bin(15) init(100);
+        
+         /* this is the routine that will be called to return the error text */
+         dcl  PPRTEXT        external entry options (asm inter);
+        
+         %page;
+              /************************************************************/
+              /*                      main                                */
+              /************************************************************/
+        
+           /* Logon */
+        
+           EXEC SQL
+             LOGON :LOGON_STR;
+           if (SqlCA.sqlCode ¬= 0)  then call ERR_CHECK(req_code,code);
+           if (code = FATAL_ERR)   then return;
+        
+           SCREEN_MESSAGE = ’Logged on ok...’;
+           EXEC CICS SEND TEXT FROM(SCREEN_MESSAGE) LENGTH(60) FREEKB ERASE;
+        
+           call exec_request_001;
+           call exec_request_002;
+           call exec_request_003;
+           call exec_request_004;
+           call exec_request_005;
+           call exec_request_006;
+           call exec_request_007;
+           call exec_request_008;
+        
+           /* Logoff */
+        
+           EXEC SQL LOGOFF;
+           if (SqlCA.sqlCode ¬= 0)  then call ERR_CHECK(req_code,code);
+           if (code = FATAL_ERR)   then return;
+        
+           SCREEN_MESSAGE = ’Logged off...’;
+           EXEC CICS SEND TEXT FROM(SCREEN_MESSAGE) LENGTH(60) FREEKB ERASE;
+        
+           EXEC CICS RETURN;
+           return;
+        
+         %page;
+        
+         exec_request_001:
+             procedure;
+        
+              /************************************************************/
+              /*                                                          */
+              /* This procedure will INSERT the first row.                */
+              /*                                                          */
+              /************************************************************/
+        
+          req_code = ’REQ_001’;
+        
+          EXEC SQL
+             INSERT INTO HUTESTRESULTS VALUES
+                 ( ’PREPROCESSOR2/PLI/CICS’,
+                   1                   ,
+                   ’00010203’XB        ,
+                   -128                ,
+                   ’        ’          ,
+                   000101              ,
+                   0.01                ,
+                   5.4E-79             ,
+                   -2147483648         ,
+                   -32768              ,
+                   ’00’XB              ,
+                   ’ ’
+                 );
+        
+           if (SqlCA.sqlCode ¬= 0)  then call ERR_CHECK(req_code,code);
+           if (code = FATAL_ERR)   then return;
+        
+           call commit;
+        
+           SCREEN_MESSAGE = ’Finished Request 001...’;
+           EXEC CICS SEND TEXT FROM(SCREEN_MESSAGE) LENGTH(60) FREEKB ERASE;
+        
+           return;
+           end exec_request_001;
+        
+         %page;
+        
+         exec_request_002:
+             procedure;
+        
+              /************************************************************/
+              /*                                                          */
+              /* This procedure will INSERT the second row.               */
+              /*                                                          */
+              /************************************************************/
+        
+          req_code = ’REQ_002’;
+        
+          EXEC SQL
+             INSERT INTO HUTESTRESULTS VALUES
+                 ( ’PREPROCESSOR2/PLI/CICS’,
+                   2                   ,
+                   ’FCFDFEFF’XB        ,
+                   127                 ,
+                   ’99999999’          ,
+                   991231              ,
+                   99999.999           ,
+                   7.2E75              ,
+                   2147483647          ,
+                   32767               ,
+                   ’F8F9FAFBFCFDFEFF’XB,
+                   ’}}}}}}}}}}}}}}}’
+                 );
+           if (SqlCA.sqlCode ¬= 0)  then call ERR_CHECK(req_code,code);
+           if (code = FATAL_ERR)   then return;
+        
+           call commit;
+        
+           SCREEN_MESSAGE = ’Finished Request 002...’;
+           EXEC CICS SEND TEXT FROM(SCREEN_MESSAGE) LENGTH(60) FREEKB ERASE;
+        
+           return;
+           end exec_request_002;
+        
+         %page;
+        
+         exec_request_003:
+             procedure;
+        
+              /************************************************************/
+              /*                                                          */
+              /* This procedure will INSERT the third row.                */
+              /*                                                          */
+              /************************************************************/
+        
+          req_code = ’REQ_003’;
+        
+          EXEC SQL
+             INSERT INTO HUTESTRESULTS VALUES
+                 ( ’PREPROCESSOR2/PLI/CICS’,
+                   3                     ,
+                                       ,
+                                       ,
+                                       ,
+                                       ,
+                                       ,
+                                       ,
+                                       ,
+                                       ,
+                                       ,
+                 );
+           if (SqlCA.sqlCode ¬= 0)  then call ERR_CHECK(req_code,code);
+           if (code = FATAL_ERR)   then return;
+        
+           call commit;
+        
+           SCREEN_MESSAGE = ’Finished Request 003...’;
+           EXEC CICS SEND TEXT FROM(SCREEN_MESSAGE) LENGTH(60) FREEKB ERASE;
+        
+           return;
+           end exec_request_003;
+        
+         %page;
+        
+         exec_request_004:
+             procedure;
+        
+              /************************************************************/
+              /*                                                          */
+              /* This procedure will INSERT the fourth row.               */
+              /*                                                          */
+              /************************************************************/
+        
+          req_code = ’REQ_004’;
+        
+          EXEC SQL
+             INSERT INTO HUTESTRESULTS VALUES
+                 ( ’PREPROCESSOR2/PLI/CICS’,
+                   4                     ,
+                                       ,
+                                       ,
+                                       ,
+                                       ,
+                                       ,
+                                       ,
+                                       ,
+                                       ,
+                                       ,
+                 );
+           if (SqlCA.sqlCode ¬= 0)  then call ERR_CHECK(req_code,code);
+           if (code = FATAL_ERR)   then return;
+        
+           call commit;
+        
+           SCREEN_MESSAGE = ’Finished Request 004...’;
+           EXEC CICS SEND TEXT FROM(SCREEN_MESSAGE) LENGTH(60) FREEKB ERASE;
+        
+           return;
+           end exec_request_004;
+        
+         %page;
+        
+         exec_request_005:
+             procedure;
+        
+              /************************************************************/
+              /*                                                          */
+              /* This procedure will INSERT the fifth row.                */
+              /*                                                          */
+              /************************************************************/
+        
+          req_code = ’REQ_005’;
+        
+          EXEC SQL
+             INSERT INTO HUTESTRESULTS VALUES
+                 ( ’PREPROCESSOR2/PLI/CICS’,
+                   5                   ,
+                   ’FCFDFEFF’XB        ,
+                   127                 ,
+                   ’99999999’          ,
+                   991231              ,
+                   99999.999           ,
+                   7.2E75              ,
+                   2147483647          ,
+                   32767               ,
+                   ’F8F9FAFBFCFDFEFF’XB,
+                   ’}}}}}}}}}}}}}}}’
+                 );
+           if (SqlCA.sqlCode ¬= 0)  then call ERR_CHECK(req_code,code);
+           if (code = FATAL_ERR)   then return;
+        
+           call commit;
+        
+           SCREEN_MESSAGE = ’Finished Request 005...’;
+           EXEC CICS SEND TEXT FROM(SCREEN_MESSAGE) LENGTH(60) FREEKB ERASE;
+        
+           return;
+           end exec_request_005;
+         %page;
+        
+         exec_request_006:
+             procedure;
+        
+              /************************************************************/
+              /*                                                          */
+              /* This procedure will UPDATE row 4.                        */
+              /*                                                          */
+              /************************************************************/
+        
+          req_code = ’REQ_006’;
+        
+          EXEC SQL
+             UPDATE HUTESTRESULTS SET
+                   COL001 = ’77’XB     ,
+                   COL002 = 100        ,
+                   COL003 = ’AAAA’     ,
+                   COL004 = 500615     ,
+                   COL005 = 11111.222  ,
+                   COL006 = 1.2345E6   ,
+                   COL007 = 12345678   ,
+                   COL008 = 12345      ,
+                   COL009 = ’888888’XB ,
+                   COL010 = ’ZZZZZZZZ’
+                 WHERE SOURCEOFROW = ’PREPROCESSOR2/PLI/CICS’ AND ROWNUMBER = 4;
+           if (SqlCA.sqlCode ¬= 0)  then call ERR_CHECK(req_code,code);
+           if (code = FATAL_ERR)   then return;
+        
+           call commit;
+        
+           SCREEN_MESSAGE = ’Finished Request 006...’;
+           EXEC CICS SEND TEXT FROM(SCREEN_MESSAGE) LENGTH(60) FREEKB ERASE;
+        
+           return;
+           end exec_request_006;
+         %page;
+        
+         exec_request_007:
+             procedure;
+        
+              /************************************************************/
+              /*                                                          */
+              /* This procedure will DELETE row 2.                        */
+              /*                                                          */
+              /************************************************************/
+        
+          req_code = ’REQ_007’;
+        
+          EXEC SQL
+             DELETE FROM HUTESTRESULTS
+                 WHERE SOURCEOFROW = ’PREPROCESSOR/2/CICS’ AND ROWNUMBER = 2;
+           if (SqlCA.sqlCode ¬= 0)  then call ERR_CHECK(req_code,code);
+           if (code = FATAL_ERR)   then return;
+        
+           call commit;
+        
+           SCREEN_MESSAGE = ’Finished Request 007...’;
+           EXEC CICS SEND TEXT FROM(SCREEN_MESSAGE) LENGTH(60) FREEKB ERASE;
+        
+           return;
+           end exec_request_007;
+         %page;
+        
+         exec_request_008:
+             procedure;
+        
+              /************************************************************/
+              /*                                                          */
+              /* This procedure will SELECT all the rows and print all    */
+              /* the values returned.                                     */
+              /*                                                          */
+              /************************************************************/
+        
+           req_code = ’REQ_008’;
+        
+           /* Declare a CURSOR for the SELECT statement */
+        
+           EXEC SQL
+             DECLARE CURSOR_008 CURSOR FOR
+              SELECT ROWNUMBER,
+                     COL002,
+                     COL003,
+                     COL004,
+                     COL005,
+                     COL006,
+                     COL007,
+                     COL008,
+                     COL010
+                 FROM HUTESTRESULTS;
+        
+         /* Now OPEN the CURSOR (the OPEN will also execute the request) */
+        
+         EXEC SQL
+           OPEN CURSOR_008;
+         if (SqlCA.sqlCode ¬= 0)  then call ERR_CHECK(req_code,code);
+         if (code = FATAL_ERR)   then return;
+        
+         /* POSITION to the first statement, this is not needed in this */
+         /* case but you would need it if the above CURSOR was DECLAREd */
+         /* for a multi-statement request.                              */
+        
+         EXEC SQL
+           POSITION CURSOR_008 TO STATEMENT 1;
+         if (SqlCA.sqlCode ¬= 0)  then call ERR_CHECK(req_code,code);
+         if (code = FATAL_ERR)    then return;
+        
+         /* Now FETCH the values back from the table  */
+        
+         code = 0;
+         do while (code ¬= DONE);
+        
+           /* The values will be FETCHed into the HOST variables given in */
+           /* the FETCH statement.                                        */
+           /* Note that an INDICATOR variable follows each HOST variable. */
+        
+           EXEC SQL
+             FETCH CURSOR_008 INTO
+             :H_ROWNUMBER :I1, :H_COL002 :I2, :H_COL003 :I3, :H_COL004 :I4,
+             :H_COL005 :I5, :H_COL006 :I6, :H_COL007 :I7, :H_COL008 :I8,
+             :H_COL010 :I10;
+           if (SqlCA.sqlCode ¬=0)  then call ERR_CHECK(req_code,code);
+           if (code = FATAL_ERR)  then return;
+        
+           if (code = 0)
+           then do;
+        
+             SCREEN_MESSAGE = ’Values Have Been Fetched...’;
+             EXEC CICS SEND TEXT FROM(SCREEN_MESSAGE) LENGTH(60) FREEKB ERASE;
+        
+             end;
+         end;
+        
+         /* Now close the CURSOR.  */
+        
+         EXEC SQL
+           CLOSE CURSOR_008;
+         if (SqlCA.sqlCode ¬=0)  then call ERR_CHECK(req_code,code);
+         if (code = FATAL_ERR)  then return;
+        
+         call commit;
+        
+          SCREEN_MESSAGE = ’Finished Request 008...         ’;
+          EXEC CICS SEND TEXT FROM(SCREEN_MESSAGE) LENGTH(60) FREEKB ERASE;
+        
+         return;
+         end exec_request_008;
+        %page;
+        
+        commit: proc;
+        
+          req_code = ’commit’;
+        
+          EXEC SQL COMMIT;
+          if (SqlCA.sqlCode ¬=0)  then call ERR_CHECK(req_code,code);
+          if (code = FATAL_ERR)   then return;
+          return;
+          end;
+        %page;
+        
+        ERR_CHECK: proc(p_req_code,p_code);
+        d   clp_req_code  char(32) var;
+        d   clp_code      fixed bin(15);
+        d   cli           fixed bin(15);
+        
+          p_code = 0;
+          if (SqlCA.sqlCode = 100 | SqlCA.SqlCode = -501)
+          then p_code = DONE;
+          else do;
+            call PPRTEXT(SQL_RDTRTCON,err_code,err_msg,max_len);
+            SCREEN_MESSAGE = (SqlCA.sqlCode||’ ’||err_code||’  ’||err_msg);
+            EXEC CICS SEND TEXT FROM(SCREEN_MESSAGE) LENGTH(60) FREEKB ERASE;
+        
+            if (SqlCA.sqlCode = -901 | SqlCA.SqlCode > 0)
+            then do;
+              p_code = FATAL_ERR;
+              SCREEN_MESSAGE = ’Fatal Error in ’||p_req_code;
+              EXEC CICS SEND TEXT FROM(SCREEN_MESSAGE) LENGTH(60) FREEKB ERASE;
+              end;
+            end;
+        
+            return;
+            end;
+        
+            end;

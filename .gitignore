@@ -1,0 +1,20 @@
+# PL/I source files (may contain proprietary code)
+# Uncomment the next line if you want to gitignore source files
+# pli_src/
+
+# Generated output (can be regenerated)
+# Uncomment if you don't want to track generated docs
+# docs/
+# generated/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+
+# VS Code MCP config (contains subscription keys)
+.vscode/mcp.json

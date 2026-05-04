@@ -1,0 +1,575 @@
+/*RETRIEVAL*/
+ /*DMLIST*/
+
+ /******************************************************************/
+ /* The following program is an example of a TCP/IP client         */
+ /* program written in PL1.                                        */
+ /* The processing is the following:                               */
+ /*  - Create a socket for the client program.                     */
+ /*  - Convert the known dotted string format IPA to binary.       */
+ /*  - Find host information for connection.                       */
+ /*  - Establish a connection to the host listener.                */
+ /*  - Send message 1 to the listener (first 4 bytes = data length)*/
+ /*  - Read message 1 from  listener (first 4 bytes = data length) */
+ /*  - Send message 2 to the listener (first 4 bytes = data length)*/
+ /*  - Read message 2 from  listener (first 4 bytes = data length) */
+ /*  - Close socket and exit.                                      */
+ /******************************************************************/
+ /* Notes for the PL/I compiler on VSE.                            */
+ /*  - in order to allow arithmetic operations on POINTER type     */
+ /*    variables, specify the LANGLVL(OS,SPROG) compiler option    */
+ /*  - there is no option to allow external names on 8 characters, */
+ /*    so replace all CALL IDMSOCKI by CALL IDMSOCK, as described  */
+ /*    in the Callable Services manual.                            */
+ /******************************************************************/
+
+ PLICLI : PROC OPTIONS (REENTRANT,FETCHABLE);
+
+  DCL MODE(IDMS_DC) DEBUG;
+  DCL ADDR BUILTIN;
+  DCL IDMSPLI  ENTRY OPTIONS(INTER,ASSEMBLER);
+  DCL IDMSOCKI ENTRY OPTIONS(INTER,ASSEMBLER);
+  DCL IDMSP    ENTRY;
+
+  INCLUDE IDMS (SUBSCHEMA_CTRL);
+  INCLUDE IDMS (SOCKET_CALL_INTERFACE);
+  INCLUDE IDMS (SOCKET_MISC_DEFINITIONS);
+  DCL 1 SOCKADDR1,
+        3 INCLUDE IDMS (SOCKET-SOCKADDR-IN);
+  DCL 1 AINFO1,
+        3 INCLUDE IDMS (SOCKET_ADDRINFO);
+
+  DCL 1 MSG01  CHAR (20) INIT (' Parameter string  :');
+  DCL 1 MSG02  CHAR (20) INIT (' Socket descriptor :');
+  DCL 1 MSG03  CHAR (20) INIT (' Resume count      :');
+  DCL 1 MSG04  CHAR (15) INIT (' Starting read.');
+  DCL 1 MSG05  CHAR (16) INIT (' Starting write.');
+  DCL 1 MSG06  CHAR (16) INIT (' Closing socket.');
+  DCL 1 MSG07  CHAR (20) INIT (' Socket return code:');
+  DCL 1 MSG08  CHAR (20) INIT (' Socket reason code:');
+  DCL 1 MSG09  CHAR (20) INIT (' Socket errno      :');
+  DCL 1 MSG10  CHAR (20) INIT (' Buffer length     :');
+  DCL 1 MSG11  CHAR (08) INIT (' Buffer:');
+  DCL 1 MSG12  CHAR (22) INIT (' Data length too long.');
+
+  DCL 1 MSG20  CHAR (19) INIT (' Calling GETHOSTID.');
+  DCL 1 MSG21  CHAR (23) INIT (' Calling GETHOSTBYADDR.');
+  DCL 1 MSG22  CHAR (21) INIT (' Calling GETADDRINFO.');
+  DCL 1 MSG23  CHAR (22) INIT (' Calling FREEADDRINFO.');
+  DCL 1 MSG24  CHAR (21) INIT (' Calling GETNAMEINFO.');
+  DCL 1 MSG25  CHAR (16) INIT (' Calling SOCKET.');
+  DCL 1 MSG26  CHAR (17) INIT (' Calling CONNECT.');
+  DCL 1 MSG27  CHAR (20) INIT (' Calling GETSOCKOPT.');
+  DCL 1 MSG28  CHAR (20) INIT (' Calling SETSOCKOPT.');
+  DCL 1 MSG29  CHAR (19) INIT (' Calling GETSTACKS.');
+  DCL 1 MSG30  CHAR (18) INIT (' Calling SETSTACK.');
+  DCL 1 MSG31  CHAR (19) INIT (' Calling INET_PTON.');
+
+
+  DCL 1 MSG97  CHAR (24) INIT (' Socket call successful.');
+  DCL 1 MSG98  CHAR (19) INIT (' Socket call error.');
+  DCL 1 MSG99,
+        3 MSG99_1 CHAR (29) INIT (' Program PLICLI terminated.'),
+        3 MSG99_2 CHAR (15) INIT (' Error count = '),
+        3 MSG99_3 PIC '(4)9';
+
+
+   /******************************************************************/
+   /* Modify DEST-PORT and IPA-HOST to connect to desired listener   */
+   /* If the port number is greater than 32767 use the following     */
+   /* DEST_PORT = (port number - 65536).                             */
+   /*DCL 1 DEST_PORT           FIXED BINARY(15) INIT( (12345-65536) )*/
+   /******************************************************************/
+  DCL 1 DEST_PORT             FIXED BINARY(15) INIT(12345);
+  DCL 1 IPAHOST_REC,
+        3 IPA_HOST CHAR (12) INIT ('255.255.25.2'),
+        3 FILLER   CHAR (12) INIT (' '),
+        3 IPA_HOSTL FIXED BINARY(31) INIT(16);
+  DCL 1 SOCKDESC     FIXED BINARY(31);
+  DCL 1 NIFLAGS      FIXED BINARY(31) INIT(0);
+  DCL 1 SNAPLEN      FIXED BINARY(31);
+  DCL 1 WK1          FIXED BINARY(31);
+  DCL 1 WK2          FIXED BINARY(31);
+  DCL 1 WK3          FIXED BINARY(31);
+  DCL 1 RETLEN       FIXED BINARY(31) INIT(0);
+  DCL 1 WK_LENGTH    FIXED BINARY(31);
+  DCL 1 WK_SUBSCRIPT FIXED BINARY(31);
+  DCL 1 WK_PTR       POINTER;
+  DCL 1 TEXT         CHAR(80) BASED(WK_PTR);
+  DCL 1 TERM_FLAG    FIXED BINARY(31) INIT(0);
+  DCL 1 ERROR_COUNT  FIXED BINARY(31) INIT(0);
+
+  DCL 1 RETURN_CODES,
+        3 RETCD             FIXED BINARY(31),
+        3 ERRNO             FIXED BINARY(31),
+        3 RSNCD             FIXED BINARY(31);
+
+  DCL 1 IPADDR_REC,
+        3 IPADDRBUFL        FIXED BINARY(31) INIT(16),
+        3 IPADDRRETL        FIXED BINARY(31),
+        3 IPADDRBUF         CHAR(16);
+
+
+  DCL 1 BUFFER,
+        3 BUFLEN       FIXED BINARY(31),
+        3 BUFTXT80     CHAR(80);
+
+  DCL 1 WORKW,
+        3 WORK_WCC     CHAR(1),
+        3 WORK         CHAR(80);
+
+  DCL 1 HOSTENTP POINTER;
+  DCL 1 HOSTENT1 BASED(HOSTENTP),
+        3 INCLUDE IDMS (SOCKET_HOSTENT);
+  DCL 1 HOSTENT_NAME   CHAR(64) BASED(HOSTENT_NAME_PTR);
+
+  DCL 1 AINFOINP  POINTER;
+  DCL 1 AINFOOUTP POINTER;
+  DCL 1 AINFO2    BASED(AINFOOUTP),
+        3 INCLUDE IDMS (SOCKET_ADDRINFO);
+
+  DCL 1 HOST_IPA  FIXED BINARY(31) INIT(0);
+ /******************************************************************/
+ /* Include also all the structures that we deliver in DLODPROT,   */
+ /* but that are not used by this test program.                    */
+ /******************************************************************/
+  INCLUDE IDMS (SOCKET_LISTENER_PARMS);
+  INCLUDE IDMS (SOCKET_SOCKADDR_IN6);
+  INCLUDE IDMS (SOCKET_TIMEVAL);
+
+
+ /*****************************************************************/
+ /* Create a socket in the communications domain                  */
+ /*****************************************************************/
+ WRITE LOG MESSAGE ID (9060300) PARMS FROM (MSG25) LENGTH (16);
+ CALL IDMSOCKI ( SOCKET_FUNCTION_SOCKET,
+                 SOCKET_RETCD,
+                 SOCKET_ERRNO,
+                 SOCKET_RSNCD,
+                 SOCKET_FAMILY_AFINET,
+                 SOCKET_TYPE_STREAM,
+                 SOCKET_PROTOCOL_TCP,
+                 SOCKDESC);
+ CALL TCP_CHECKRC;
+ IF (TERM_FLAG = 1) THEN GOTO TCP_EXIT;
+
+ /*****************************************************************/
+ /* Convert the IP address from dotted string format to binary.   */
+ /*****************************************************************/
+ WRITE LOG MESSAGE ID (9060300) PARMS FROM (MSG31) LENGTH (19);
+ CALL IDMSOCKI ( SOCKET_FUNCTION_INETPTON,
+                 SOCKET_RETCD,
+                 SOCKET_ERRNO,
+                 SOCKET_RSNCD,
+                 SOCKET_FAMILY_AFINET,
+                 IPA_HOST,
+                 IPA_HOSTL,
+                 HOST_IPA );
+ CALL TCP_CHECKRC;
+
+ /******************************************************************/
+ /* Take the IP address and domain and resolve it through a name   */
+ /* server. If successful, return the information in a HOSTENT     */
+ /* structure.                                                     */
+ /******************************************************************/
+ WRITE LOG MESSAGE ID (9060300) PARMS FROM (MSG21) LENGTH (23);
+ CALL IDMSOCKI ( SOCKET_FUNCTION_GETHOSTBYADDR,
+                 SOCKET_RETCD,
+                 SOCKET_ERRNO,
+                 SOCKET_RSNCD,
+                 HOST_IPA,
+                 SOCKET_IPADDR4L,
+                 SOCKET_FAMILY_AFINET,
+                 HOSTENTP);
+ CALL TCP_CHECKRC;
+
+ /******************************************************************/
+ /* Connect  DEST_PORT                                             */
+ /******************************************************************/
+ SOCKADDR1.SIN_FAMILY      = SOCKET_FAMILY_AFINET;
+ SOCKADDR1.SIN_PORT_NUMBER = DEST_PORT;
+ SOCKADDR1.SIN_ADDRESS     = HOST_IPA;
+ WRITE LOG MESSAGE ID (9060300) PARMS FROM (MSG26) LENGTH (17);
+ CALL IDMSOCKI ( SOCKET_FUNCTION_CONNECT,
+                 SOCKET_RETCD,
+                 SOCKET_ERRNO,
+                 SOCKET_RSNCD,
+                 SOCKDESC,
+                 SOCKADDR1,
+                 SOCKADDR_IN_LENGTH);
+ CALL TCP_CHECKRC;
+ IF (TERM_FLAG = 1) THEN DO;
+   CALL TCP_CLOSE;
+   GOTO TCP_EXIT;
+   END;
+
+
+ /******************************************************************/
+ /* Build two messages and send them to DEST_PORT                  */
+ /******************************************************************/
+ BUFTXT80     = 'PLICLI TCP/IP test message number 00001 ';
+ BUFLEN       = 41;
+ WK_LENGTH    = 45;
+ WK_PTR       = ADDR(BUFLEN);
+ CALL TCP_WRITE;
+ IF (TERM_FLAG = 1) THEN GOTO TCP_EXIT;
+
+
+ /******************************************************************/
+ /* Read the response from DEST_PORT                               */
+ /******************************************************************/
+ WK_LENGTH = 4;
+ BUFLEN    = 0;
+ WK_PTR    = ADDR(BUFLEN);
+ CALL TCP_READ;
+ IF (TERM_FLAG = 1) THEN RETURN;
+ IF (BUFLEN > 80) THEN DO;
+   WRITE LOG MESSAGE ID (9060300) PARMS FROM (MSG12) LENGTH (22);
+   CALL TCP_CLOSE;
+   RETURN;
+   END;
+ WK_LENGTH = BUFLEN;
+ WK_PTR = ADDR(BUFTXT80);
+ CALL TCP_READ;
+ IF (TERM_FLAG = 1) THEN GOTO TCP_EXIT;
+ WORK = BUFTXT80;
+ WK1  = BUFLEN + 1;
+ WRITE LOG MESSAGE ID (9060300) PARMS FROM (MSG11) LENGTH (8)
+                                      FROM (WORKW) LENGTH (WK1);
+
+ BUFTXT80     = 'PLICLI TCP/IP test message number 00002 ';
+ BUFLEN       = 41;
+ WK_LENGTH    = 45;
+ WK_PTR       = ADDR(BUFLEN);
+ CALL TCP_WRITE;
+ IF (TERM_FLAG = 1) THEN GOTO TCP_EXIT;
+
+ WK_LENGTH = 4;
+ BUFLEN    = 0;
+ WK_PTR    = ADDR(BUFLEN);
+ CALL TCP_READ;
+ IF (TERM_FLAG = 1) THEN GOTO TCP_EXIT;
+ IF (BUFLEN > 80) THEN DO;
+   WRITE LOG MESSAGE ID (9060300) PARMS FROM (MSG12) LENGTH (22);
+   CALL TCP_CLOSE;
+   RETURN;
+   END;
+ WK_LENGTH = BUFLEN;
+ WK_PTR = ADDR(BUFTXT80);
+ CALL TCP_READ;
+ IF (TERM_FLAG = 1) THEN RETURN;
+ WORK = BUFTXT80;
+ WK1  = BUFLEN + 1;
+ WRITE LOG MESSAGE ID (9060300) PARMS FROM (MSG11) LENGTH (8)
+                                      FROM (WORKW) LENGTH (WK1);
+
+ /******************************************************************/
+ /* Close the  socket and exit                                     */
+ /******************************************************************/
+ CALL TCP_CLOSE;
+ GOTO TCP_EXIT;
+
+ TCP_EXIT:
+    MSG99_3 = ERROR_COUNT;
+    WRITE LINE TO TERMINAL FROM (MSG99) LENGTH (48);
+    WRITE LOG MESSAGE ID (9060300) PARMS FROM (MSG99) LENGTH (48);
+    RETURN;
+
+ /******************************************************************/
+ /* Procedure to read a message from DEST_PORT                     */
+ /******************************************************************/
+ TCP_READ: PROC;
+   WRITE LOG MESSAGE ID (9060300) PARMS FROM (MSG04) LENGTH (15);
+   DO WHILE (WK_LENGTH > 0);
+     CALL IDMSOCKI ( SOCKET_FUNCTION_READ,
+                     SOCKET_RETCD,
+                     SOCKET_ERRNO,
+                     SOCKET_RSNCD,
+                     SOCKDESC,
+                     WK_PTR->TEXT,
+                     WK_LENGTH,
+                     RETLEN);
+     CALL TCP_CHECKRC;
+     IF ((TERM_FLAG = 1) | (RETLEN = 0)) THEN DO;
+       CALL TCP_CLOSE;
+       RETURN;
+       END;
+     WK_PTR = WK_PTR + RETLEN;
+     WK_LENGTH = WK_LENGTH - RETLEN;
+     END;
+ END TCP_READ;
+
+ /******************************************************************/
+ /* Procedure to send a message DEST_PORT                          */
+ /******************************************************************/
+ TCP_WRITE: PROC;
+   WRITE LOG MESSAGE ID (9060300) PARMS FROM (MSG05) LENGTH (16);
+   DO WHILE (WK_LENGTH > 0);
+     CALL IDMSOCKI ( SOCKET_FUNCTION_WRITE,
+                     SOCKET_RETCD,
+                     SOCKET_ERRNO,
+                     SOCKET_RSNCD,
+                     SOCKDESC,
+                     WK_PTR->TEXT,
+                     WK_LENGTH,
+                     RETLEN);
+     CALL TCP_CHECKRC;
+     IF ((TERM_FLAG = 1) | (RETLEN = 0)) THEN DO;
+       CALL TCP_CLOSE;
+       RETURN;
+       END;
+     WK_PTR = WK_PTR + RETLEN;
+     WK_LENGTH = WK_LENGTH - RETLEN;
+     END;
+ END TCP_WRITE;
+
+ /******************************************************************/
+ /* Procedure to close the socket                                  */
+ /******************************************************************/
+ TCP_CLOSE: PROC;
+   WRITE LOG MESSAGE ID (9060300) PARMS FROM (MSG06) LENGTH (16);
+   CALL IDMSOCKI ( SOCKET_FUNCTION_CLOSE,
+                   SOCKET_RETCD,
+                   SOCKET_ERRNO,
+                   SOCKET_RSNCD,
+                   SOCKDESC);
+   CALL TCP_CHECKRC;
+ END TCP_CLOSE;
+
+ /******************************************************************/
+ /* Procedure to check the return codes                            */
+ /******************************************************************/
+ TCP_CHECKRC: PROC;
+   RETCD = SOCKET_RETCD;
+   ERRNO = SOCKET_ERRNO;
+   RSNCD = SOCKET_RSNCD;
+   IF (RETCD ,= 0) THEN DO;
+     TERM_FLAG = 1;
+     ERROR_COUNT = ERROR_COUNT + 1;
+     WRITE LOG MESSAGE ID (9060300) PARMS FROM (MSG98) LENGTH (19);
+     SNAP FROM (RETURN_CODES) LENGTH (12);
+     END;
+   ELSE DO;
+     TERM_FLAG = 0;
+     WRITE LOG MESSAGE ID (9060300) PARMS FROM (MSG97) LENGTH (24);
+     END;
+ END TCP_CHECKRC;
+
+ END PLICLI ;
+PL/I TCP/IP Generic Listener Server Program
+ /*RETRIEVAL*/
+ /*DMLIST*/
+
+ /******************************************************************/
+ /* The following program is an example of a TCP/IP generic        */
+ /* listener server program written in PL/I.                       */
+ /* The processing is the following:                               */
+ /*  - read a message from the client (first 4 bytes = data length)*/
+ /*  - send the message back to the client program                 */
+ /*  - if the message text is equal to "STOP" or if the connection */
+ /*    is closed, then it closes its socket and return to the      */
+ /*    generic listener service.                                   */
+ /*  - if the message text is not equal to "STOP", then it returns */
+ /*    to the generic listener service without closing its socket. */
+ /*                                                                */
+ /* Notes for the PL/I compiler on VSE.                            */
+ /*  - in order to allow arithmetic operations on POINTER type     */
+ /*    variables, specify the LANGLVL(OS,SPROG) compiler option    */
+ /*  - there is no option to allow external names on 8 characters, */
+ /*    so replace all CALL IDMSOCKI by CALL IDMSOCK, as described  */
+ /*    in the Callable Services manual.                            */
+ /******************************************************************/
+
+ PLILIS: PROC (P1, P2, P3)
+           OPTIONS (REENTRANT,FETCHABLE);
+
+ /******************************************************************/
+ /* Parameter list with which a listener program receives control  */
+ /******************************************************************/
+  DCL (P1,P2,P3)          POINTER;
+  DCL SOCKET_PARMS        CHAR(80)      BASED (ADDR(P1));
+  DCL SOCKET_DESCRIPTOR   FIXED BIN(31) BASED (ADDR(P2));
+  DCL SOCKET_RESUME_COUNT FIXED BIN(31) BASED (ADDR(P3));
+
+  DCL MODE(IDMS_DC) DEBUG;
+  DCL ADDR BUILTIN;
+  DCL IDMSPLI  ENTRY OPTIONS(INTER,ASSEMBLER);
+  DCL IDMSOCKI ENTRY OPTIONS(INTER,ASSEMBLER);
+  DCL IDMSP    ENTRY;
+
+  INCLUDE IDMS (SUBSCHEMA_CTRL);
+  INCLUDE IDMS (SOCKET_CALL_INTERFACE);
+
+  DCL 1 MSG01  CHAR (20) INIT (' Parameter string  :');
+  DCL 1 MSG02  CHAR (20) INIT (' Socket descriptor :');
+  DCL 1 MSG03  CHAR (20) INIT (' Resume count      :');
+  DCL 1 MSG04  CHAR (15) INIT (' Starting read.');
+  DCL 1 MSG05  CHAR (16) INIT (' Starting write.');
+  DCL 1 MSG06  CHAR (16) INIT (' Closing socket.');
+  DCL 1 MSG07  CHAR (20) INIT (' Socket return code:');
+  DCL 1 MSG08  CHAR (20) INIT (' Socket reason code:');
+  DCL 1 MSG09  CHAR (20) INIT (' Socket errno      :');
+  DCL 1 MSG10  CHAR (20) INIT (' Buffer length     :');
+  DCL 1 MSG11  CHAR (08) INIT (' Buffer:');
+  DCL 1 MSG12  CHAR (22) INIT (' Data length too long.');
+
+  DCL 1 RETLEN         FIXED BINARY(31);
+  DCL 1 WK_LENGTH      FIXED BINARY(31);
+  DCL 1 WK_PTR         POINTER;
+  DCL 1 TEXT           CHAR(80) BASED(WK_PTR);
+  DCL 1 TERM_FLAG      FIXED BINARY(31) INITIAL(0);
+
+  DCL 1 BUFFER,
+        3 BUFLEN       FIXED BINARY(31),
+        3 BUFTXT80     CHAR(80);
+
+  DCL 1 WORKW,
+        3 WORK_WCC     CHAR(1),
+        3 WORK         CHAR(80);
+
+ /******************************************************************/
+ /* Display the 3 input parameters                                 */
+ /******************************************************************/
+ /******************************************************************/
+ /* Read the first 4 bytes: will contain the remaining length      */
+ /******************************************************************/
+ WK_LENGTH = 4;
+ BUFLEN = 0;
+ WK_PTR = ADDR(BUFLEN);
+ CALL TCP_READ;
+ IF (TERM_FLAG = 1) THEN RETURN;
+
+ /******************************************************************/
+ /* Read the remaining data (maximum 80 characters are allowed)    */
+ /******************************************************************/
+ IF (BUFLEN > 80)
+   THEN DO;
+     WRITE LOG MESSAGE ID (9060300)
+       PARMS FROM (MSG12) LENGTH (22);
+     CALL TCP_CLOSE;
+     RETURN;
+     END;
+
+ WK_LENGTH = BUFLEN;
+ WK_PTR = ADDR(BUFTXT80);
+ CALL TCP_READ;
+ IF (TERM_FLAG = 1) THEN RETURN;
+
+ WORK = BUFLEN;
+ WRITE LOG MESSAGE ID (9060300)
+   PARMS FROM (MSG10) LENGTH (20)
+         FROM (WORKW) LENGTH (15);
+ WORK = BUFTXT80;
+ WK_LENGTH = BUFLEN + 1;
+ WRITE LOG MESSAGE ID (9060300)
+   PARMS FROM (MSG11) LENGTH (8)
+         FROM (WORKW) LENGTH (WK_LENGTH);
+
+ /******************************************************************/
+ /* Send the message back to the client                            */
+ /******************************************************************/
+ WK_LENGTH = BUFLEN + 4;
+ WK_PTR = ADDR(BUFLEN);
+ CALL TCP_WRITE;
+
+ IF ((BUFLEN = 4) & (SUBSTR(BUFTXT80,1,4) = 'STOP'))
+   THEN CALL TCP_CLOSE;
+
+ RETURN;
+
+ /******************************************************************/
+ /* Procedure to read a message from the client                    */
+ /******************************************************************/
+ TCP_READ: PROC;
+   WRITE LOG MESSAGE ID (9060300)
+     PARMS FROM (MSG04) LENGTH (15);
+   DO WHILE (WK_LENGTH > 0);
+     CALL IDMSOCKI ( SOCKET_FUNCTION_READ,
+                     SOCKET_RETCD,
+                     SOCKET_ERRNO,
+                     SOCKET_RSNCD,
+                     SOCKET_DESCRIPTOR,
+                     WK_PTR->TEXT,
+                     WK_LENGTH,
+                     RETLEN);
+     WORK = SOCKET_RETCD;
+     WRITE LOG MESSAGE ID (9060300)
+       PARMS FROM (MSG07) LENGTH (20)
+             FROM (WORKW) LENGTH (15);
+     IF ((SOCKET_RETCD ,= 0) | (RETLEN = 0))
+       THEN DO;
+         CALL TCP_ERROR;
+         RETURN;
+         END;
+     WK_PTR = WK_PTR + RETLEN;
+     WK_LENGTH = WK_LENGTH - RETLEN;
+     END;
+ END TCP_READ;
+
+ /******************************************************************/
+ /* Procedure to send a message to the client                      */
+ /******************************************************************/
+ TCP_WRITE: PROC;
+   WRITE LOG MESSAGE ID (9060300)
+     PARMS FROM (MSG05) LENGTH (16);
+   DO WHILE (WK_LENGTH > 0);
+     CALL IDMSOCKI ( SOCKET_FUNCTION_WRITE,
+                     SOCKET_RETCD,
+                     SOCKET_ERRNO,
+                     SOCKET_RSNCD,
+                     SOCKET_DESCRIPTOR,
+                     WK_PTR->TEXT,
+                     WK_LENGTH,
+                     RETLEN);
+     WORK = SOCKET_RETCD;
+     WRITE LOG MESSAGE ID (9060300)
+       PARMS FROM (MSG07) LENGTH (20)
+             FROM (WORKW) LENGTH (15);
+     IF ((SOCKET_RETCD ,= 0) | (RETLEN = 0))
+       THEN DO;
+         CALL TCP_ERROR;
+         RETURN;
+         END;
+     WK_PTR = WK_PTR + RETLEN;
+     WK_LENGTH = WK_LENGTH - RETLEN;
+     END;
+ END TCP_WRITE;
+
+ /******************************************************************/
+ /* Procedure to close the socket                                  */
+ /******************************************************************/
+ TCP_CLOSE: PROC;
+   WRITE LOG MESSAGE ID (9060300)
+     PARMS FROM (MSG06) LENGTH (16);
+   CALL IDMSOCKI ( SOCKET_FUNCTION_CLOSE,
+                   SOCKET_RETCD,
+                   SOCKET_ERRNO,
+                   SOCKET_RSNCD,
+                   SOCKET_DESCRIPTOR);
+   WORK = SOCKET_RETCD;
+   WRITE LOG MESSAGE ID (9060300)
+     PARMS FROM (MSG07) LENGTH (20)
+           FROM (WORKW) LENGTH (15);
+ END TCP_CLOSE;
+
+ /******************************************************************/
+ /* Procedure to process the socket call errors                    */
+ /******************************************************************/
+ TCP_ERROR: PROC;
+   WORK = SOCKET_RSNCD;
+   WRITE LOG MESSAGE ID (9060300)
+     PARMS FROM (MSG08) LENGTH (20)
+           FROM (WORKW) LENGTH (15);
+   WORK = SOCKET_ERRNO;
+   WRITE LOG MESSAGE ID (9060300)
+     PARMS FROM (MSG09) LENGTH (20)
+           FROM (WORKW) LENGTH (15);
+   WORK = RETLEN;
+   WRITE LOG MESSAGE ID (9060300)
+     PARMS FROM (MSG10) LENGTH (20)
+           FROM (WORKW) LENGTH (15);
+   CALL TCP_CLOSE;
+   TERM_FLAG = 1;
+ END TCP_ERROR;
+
+ END PLILIS;
